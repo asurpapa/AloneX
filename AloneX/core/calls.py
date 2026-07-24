@@ -14,39 +14,61 @@ from AloneX import app, config, db, lang, logger, queue, userbot, yt
 from AloneX.helpers import Media, Track, buttons, thumb
 
 
-class TgCall(PyTgCalls):
+class TgCall:
+    """Custom Telegram Voice Call handler"""
+    
     def __init__(self):
-        super().__init__(app)  # ✅ Pass app instance to parent class
         self.clients = []
-
+        self._app = app  # Store app reference
+        
     async def pause(self, chat_id: int) -> bool:
         """Pause the current playback"""
-        client = await db.get_assistant(chat_id)
+        client = await self._get_client(chat_id)
+        if not client:
+            return False
         await db.playing(chat_id, paused=True)
         return await client.pause(chat_id)
 
     async def resume(self, chat_id: int) -> bool:
         """Resume the current playback"""
-        client = await db.get_assistant(chat_id)
+        client = await self._get_client(chat_id)
+        if not client:
+            return False
         await db.playing(chat_id, paused=False)
         return await client.resume(chat_id)
 
     async def stop(self, chat_id: int) -> None:
         """Stop playback and clear queue"""
-        client = await db.get_assistant(chat_id)
+        client = await self._get_client(chat_id)
         try:
             queue.clear(chat_id)
             await db.remove_call(chat_id)
         except Exception as e:
             logger.error(f"Error in stop queue cleanup: {e}")
-            pass
 
         try:
             if client:
                 await client.leave_call(chat_id, close=False)
         except Exception as e:
             logger.error(f"Error leaving call: {e}")
-            pass
+
+    async def _get_client(self, chat_id: int):
+        """Get the appropriate client for a chat"""
+        try:
+            # Try to get assistant from db
+            client = await db.get_assistant(chat_id)
+            if client:
+                return client
+            
+            # If no client found, use the first available client
+            if self.clients:
+                return self.clients[0]
+            
+            # If no clients available, return None
+            return None
+        except Exception as e:
+            logger.error(f"Error getting client for chat {chat_id}: {e}")
+            return None
 
     async def play_media(
         self,
@@ -56,7 +78,11 @@ class TgCall(PyTgCalls):
         seek_time: int = 0,
     ) -> None:
         """Play media in voice chat"""
-        client = await db.get_assistant(chat_id)
+        client = await self._get_client(chat_id)
+        if not client:
+            await message.edit_text("❌ No voice client available!")
+            return
+            
         _lang = await lang.get_lang(chat_id)
         _thumb = (
             await thumb.generate(media)
@@ -108,7 +134,7 @@ class TgCall(PyTgCalls):
                         reply_markup=keyboard,
                     )
                 except MessageIdInvalid:
-                    media.message_id = (await app.send_photo(
+                    media.message_id = (await self._app.send_photo(
                         chat_id=chat_id,
                         photo=_thumb,
                         caption=text,
@@ -150,7 +176,7 @@ class TgCall(PyTgCalls):
             return
             
         _lang = await lang.get_lang(chat_id)
-        msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
+        msg = await self._app.send_message(chat_id=chat_id, text=_lang["play_again"])
         await self.play_media(chat_id, msg, media)
 
     async def play_next(self, chat_id: int) -> None:
@@ -159,7 +185,7 @@ class TgCall(PyTgCalls):
         
         try:
             if media and media.message_id:
-                await app.delete_messages(
+                await self._app.delete_messages(
                     chat_id=chat_id,
                     message_ids=media.message_id,
                     revoke=True,
@@ -167,13 +193,12 @@ class TgCall(PyTgCalls):
                 media.message_id = 0
         except Exception as e:
             logger.error(f"Error deleting message in play_next: {e}")
-            pass
 
         if not media:
             return await self.stop(chat_id)
 
         _lang = await lang.get_lang(chat_id)
-        msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
+        msg = await self._app.send_message(chat_id=chat_id, text=_lang["play_next"])
         
         if not media.file_path:
             media.file_path = await yt.download(media.id, video=media.video)
@@ -191,37 +216,47 @@ class TgCall(PyTgCalls):
         if not self.clients:
             return 0.0
         try:
-            pings = [await client.ping() for client in self.clients if client]
+            pings = []
+            for client in self.clients:
+                try:
+                    if client:
+                        ping = await client.ping()
+                        pings.append(ping)
+                except Exception:
+                    continue
             return round(sum(pings) / len(pings), 2) if pings else 0.0
         except Exception as e:
             logger.error(f"Error in ping: {e}")
             return 0.0
 
-    async def decorators(self, client: PyTgCalls) -> None:
-        """Register event handlers for a client"""
+    def _setup_decorators(self, client: PyTgCalls) -> None:
+        """Setup event handlers for a client"""
         
         @client.on_stream_end()
-        async def stream_end_handler(_, update: types.StreamEnded) -> None:
+        def stream_end_handler(_, update: types.StreamEnded) -> None:
             """Handle stream ended event"""
             try:
                 if update.stream_type in [types.StreamEnded.Type.AUDIO, types.StreamEnded.Type.VIDEO]:
-                    await self.play_next(update.chat_id)
+                    import asyncio
+                    asyncio.create_task(self.play_next(update.chat_id))
             except Exception as e:
                 logger.error(f"Error in stream_end_handler: {e}")
 
         @client.on_kicked()
-        async def kicked_handler(_, chat_id: int) -> None:
+        def kicked_handler(_, chat_id: int) -> None:
             """Handle kicked from group event"""
             try:
-                await self.stop(chat_id)
+                import asyncio
+                asyncio.create_task(self.stop(chat_id))
             except Exception as e:
                 logger.error(f"Error in kicked_handler: {e}")
 
         @client.on_closed_voice_chat()
-        async def closed_voice_chat_handler(_, chat_id: int) -> None:
+        def closed_voice_chat_handler(_, chat_id: int) -> None:
             """Handle voice chat closed event"""
             try:
-                await self.stop(chat_id)
+                import asyncio
+                asyncio.create_task(self.stop(chat_id))
             except Exception as e:
                 logger.error(f"Error in closed_voice_chat_handler: {e}")
 
@@ -229,15 +264,50 @@ class TgCall(PyTgCalls):
         """Initialize and start all PyTgCalls clients"""
         PyTgCallsSession.notice_displayed = True
         
+        # Import asyncio for async operations
+        import asyncio
+        
+        if not hasattr(userbot, 'clients') or not userbot.clients:
+            logger.error("No userbot clients available!")
+            return
+            
         for ub in userbot.clients:
             try:
-                client = PyTgCalls(ub, cache_duration=100)
-                await client.start()
-                self.clients.append(client)
-                await self.decorators(client)
-                logger.info(f"PyTgCalls client started for user: {ub.me.username}")
+                # Create PyTgCalls client with userbot client
+                if hasattr(ub, 'me') and ub.me:
+                    client = PyTgCalls(ub, cache_duration=100)
+                    await client.start()
+                    self.clients.append(client)
+                    
+                    # Setup decorators
+                    self._setup_decorators(client)
+                    
+                    logger.info(f"PyTgCalls client started for user: {ub.me.username}")
+                else:
+                    logger.warning("Userbot client not properly initialized, skipping...")
+                    continue
+                    
             except Exception as e:
                 logger.error(f"Error starting client: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
                 
-        logger.info(f"PyTgCalls client(s) started. Total: {len(self.clients)}")
+        if self.clients:
+            logger.info(f"PyTgCalls client(s) started. Total: {len(self.clients)}")
+        else:
+            logger.error("No PyTgCalls clients were started!")
+
+    async def is_connected(self, chat_id: int) -> bool:
+        """Check if connected to a voice chat"""
+        client = await self._get_client(chat_id)
+        if not client:
+            return False
+        try:
+            return await client.is_connected(chat_id)
+        except Exception:
+            return False
+
+
+# Create global instance
+anon = TgCall()
