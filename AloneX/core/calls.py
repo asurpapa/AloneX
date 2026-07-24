@@ -167,18 +167,25 @@ class TgCall(PyTgCalls):
 
 
     async def decorators(self, client: PyTgCalls) -> None:
-        @client.on_update()
-        async def update_handler(_, update: types.Update) -> None:
-            if isinstance(update, types.StreamEnded):
-                if update.stream_type == types.StreamEnded.Type.AUDIO:
-                    await self.play_next(update.chat_id)
-            elif isinstance(update, types.ChatUpdate):
-                if update.status in [
-                    types.ChatUpdate.Status.KICKED,
-                    types.ChatUpdate.Status.LEFT_GROUP,
-                    types.ChatUpdate.Status.CLOSED_VOICE_CHAT,
-                ]:
-                    await self.stop(update.chat_id)
+    @client.on_update()
+    async def update_handler(_, update: types.Update) -> None:
+        # Handle stream end - Auto advance to next song
+        if isinstance(update, types.StreamEnded):
+            if update.stream_type == types.StreamEnded.Type.AUDIO:
+                # Auto-play next song when current stream ends
+                await self.play_next(update.chat_id)
+            elif update.stream_type == types.StreamEnded.Type.VIDEO:
+                # Also handle video stream end
+                await self.play_next(update.chat_id)
+        
+        # Handle chat status changes
+        elif isinstance(update, types.ChatUpdate):
+            if update.status in [
+                types.ChatUpdate.Status.KICKED,
+                types.ChatUpdate.Status.LEFT_GROUP,
+                types.ChatUpdate.Status.CLOSED_VOICE_CHAT,
+            ]:
+                await self.stop(update.chat_id)
 
 
     async def boot(self) -> None:
