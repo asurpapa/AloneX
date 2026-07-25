@@ -22,7 +22,6 @@ def playlist_to_queue(chat_id: int, tracks: list) -> str:
 
 @app.on_message(
     filters.command(["play", "playforce", "vplay", "vplayforce"], prefixes=["/", ""])
-    
     & filters.group
     & ~app.bl_users
 )
@@ -121,8 +120,7 @@ async def play_hndlr(
             await sent.edit_text(m.lang["play_downloading"])
             file.file_path = await yt.download(file.id, video=video)
 
-
-await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
+    await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
     
     # ✅ DELETE USER'S COMMAND MESSAGE
     try:
@@ -136,4 +134,4 @@ await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
     await app.send_message(
         chat_id=m.chat.id,
         text=m.lang["playlist_queued"].format(len(tracks)) + added,
-    )
+        )
