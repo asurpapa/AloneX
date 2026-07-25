@@ -30,6 +30,17 @@ async def autoplay_toggle(_, m: types.Message):
 
 
 @app.on_message(
+    filters.command(["autoplaystatus"]) & filters.group & ~app.bl_users
+)
+@lang.language()
+async def check_status(_, m: types.Message):
+    """Check autoplay status"""
+    status = autoplay_status.get(m.chat.id, True)
+    status_text = "✅ ENABLED" if status else "❌ DISABLED"
+    await m.reply_text(f"🎵 **Autoplay:** {status_text}", quote=True)
+
+
+@app.on_message(
     filters.command(["forcenext"]) & filters.group & ~app.bl_users
 )
 @lang.language()
@@ -39,7 +50,6 @@ async def force_next_song(_, m: types.Message):
         if not await db.get_call(m.chat.id):
             return await m.reply_text("❌ Nothing is playing!", quote=True)
         
-        # Cancel existing timer
         if m.chat.id in timers:
             timers[m.chat.id].cancel()
             timers.pop(m.chat.id)
@@ -50,31 +60,25 @@ async def force_next_song(_, m: types.Message):
         await m.reply_text(f"❌ Error: {str(e)}", quote=True)
 
 
-# Auto-advance when song ends (timer-based fallback)
 @app.on_message(filters.command(["play", "vplay"]) & filters.group)
 @lang.language()
 async def monitor_play(_, m: types.Message):
     """Monitor song playback and auto-advance"""
     
-    # Cancel previous timer if exists
     if m.chat.id in timers:
         timers[m.chat.id].cancel()
     
-    # Get current song duration
     try:
         media = queue.get_current(m.chat.id)
         if media and hasattr(media, 'duration'):
-            # Parse duration (format: MM:SS)
             parts = str(media.duration).split(':')
             if len(parts) == 2:
                 duration = int(parts[0]) * 60 + int(parts[1])
             else:
-                duration = 180  # Default 3 min
+                duration = 180
             
-            # Add buffer time
             wait_time = duration + 3
             
-            # Create timer task
             async def auto_next():
                 await asyncio.sleep(wait_time)
                 if autoplay_status.get(m.chat.id, True):
@@ -84,7 +88,6 @@ async def monitor_play(_, m: types.Message):
                         pass
                 timers.pop(m.chat.id, None)
             
-            # Start timer
             task = asyncio.create_task(auto_next())
             timers[m.chat.id] = task
     except Exception as e:
