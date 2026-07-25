@@ -47,17 +47,27 @@ async def check_status(_, m: types.Message):
 async def force_next_song(_, m: types.Message):
     """Force play next song"""
     try:
-        if not await db.get_call(m.chat.id):
+        call_info = await db.get_call(m.chat.id)
+        if not call_info:
             return await m.reply_text("❌ Nothing is playing!", quote=True)
         
+        # Cancel timer
         if m.chat.id in timers:
-            timers[m.chat.id].cancel()
-            timers.pop(m.chat.id)
+            try:
+                timers[m.chat.id].cancel()
+            except:
+                pass
+            timers.pop(m.chat.id, None)
+        
+        # Check if queue has songs
+        q = queue.get(m.chat.id)
+        if not q or len(q) == 0:
+            return await m.reply_text("❌ No songs in queue!", quote=True)
         
         await anon.play_next(m.chat.id)
         await m.reply_text("⏭️ Next song!", quote=True)
     except Exception as e:
-        await m.reply_text(f"❌ Error: {str(e)}", quote=True)
+        await m.reply_text(f"❌ Error: {str(e)[:100]}", quote=True)
 
 
 @app.on_message(filters.command(["play", "vplay"]) & filters.group)
