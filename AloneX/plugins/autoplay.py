@@ -2,6 +2,10 @@
 # Licensed under the MIT License.
 # Autoplay with Timer - ASURPAPA
 
+# Copyright (c) 2025 TheHamkerAlone
+# Licensed under the MIT License.
+# Autoplay Plugin - ASURPAPA
+
 import asyncio
 from pyrogram import filters, types
 from AloneX import app, anon, db, lang, queue
@@ -37,7 +41,7 @@ async def check_status(_, m: types.Message):
     """Check autoplay status"""
     status = autoplay_status.get(m.chat.id, True)
     status_text = "✅ ENABLED" if status else "❌ DISABLED"
-    await m.reply_text(f"🎵 **Autoplay:** {status_text}", quote=True)
+    await m.reply_text(f"🎵 **Status:** {status_text}", quote=True)
 
 
 @app.on_message(
@@ -49,9 +53,8 @@ async def force_next_song(_, m: types.Message):
     try:
         call_info = await db.get_call(m.chat.id)
         if not call_info:
-            return await m.reply_text("❌ Nothing is playing!", quote=True)
+            return await m.reply_text("❌ Nothing playing!", quote=True)
         
-        # Cancel timer
         if m.chat.id in timers:
             try:
                 timers[m.chat.id].cancel()
@@ -59,13 +62,8 @@ async def force_next_song(_, m: types.Message):
                 pass
             timers.pop(m.chat.id, None)
         
-        # Check if queue has songs
-        q = queue.get(m.chat.id)
-        if not q or len(q) == 0:
-            return await m.reply_text("❌ No songs in queue!", quote=True)
-        
         await anon.play_next(m.chat.id)
-        await m.reply_text("⏭️ Next song!", quote=True)
+        await m.reply_text("⏭️ Next!", quote=True)
     except Exception as e:
         await m.reply_text(f"❌ Error: {str(e)[:100]}", quote=True)
 
@@ -73,10 +71,13 @@ async def force_next_song(_, m: types.Message):
 @app.on_message(filters.command(["play", "vplay"]) & filters.group)
 @lang.language()
 async def monitor_play(_, m: types.Message):
-    """Monitor song playback and auto-advance"""
+    """Monitor playback"""
     
     if m.chat.id in timers:
-        timers[m.chat.id].cancel()
+        try:
+            timers[m.chat.id].cancel()
+        except:
+            pass
     
     try:
         media = queue.get_current(m.chat.id)
