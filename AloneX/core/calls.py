@@ -130,40 +130,34 @@ class TgCall(PyTgCalls):
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
         await self.play_media(chat_id, msg, media)
 
-async def play_next(self, chat_id: int) -> None:
-    media = queue.get_next(chat_id)
-    
-    if not media:
-        return await self.stop(chat_id)
-    
-    try:
-        if media.message_id:
-            await app.delete_messages(
-                chat_id=chat_id,
-                message_ids=media.message_id,
-                revoke=True,
-            )
-    except:
-        pass
 
-    _lang = await lang.get_lang(chat_id)
-    msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
-    
-    if not media.file_path:
-        media.file_path = await yt.download(media.id, video=media.video)
+    async def play_next(self, chat_id: int) -> None:
+        media = queue.get_next(chat_id)
+        
+        if not media:
+            return await self.stop(chat_id)
+        
+        try:
+            if media.message_id:
+                await app.delete_messages(
+                    chat_id=chat_id,
+                    message_ids=media.message_id,
+                    revoke=True,
+                )
+        except:
+            pass
+
+        _lang = await lang.get_lang(chat_id)
+        msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
+        
         if not media.file_path:
-            await msg.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
-            return
+            media.file_path = await yt.download(media.id, video=media.video)
+            if not media.file_path:
+                await msg.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
+                return
 
-    media.message_id = msg.id
-    await self.play_media(chat_id, msg, media)
-
-
-
-
-        except Exception as e:
-            logger.error(f"[PLAYBACK ERROR] Chat {chat_id}: {str(e)}")
-            await msg.edit_text(f"❌ Error: {str(e)[:100]}")
+        media.message_id = msg.id
+        await self.play_media(chat_id, msg, media)
 
 
     async def ping(self) -> float:
