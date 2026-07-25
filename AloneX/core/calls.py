@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 # This file is part of AloneXMusic
 # ALONE-CODER
+
 import asyncio
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
                       RTMPStreamingUnsupported)
@@ -91,7 +92,6 @@ class TgCall(PyTgCalls):
                 )
                 keyboard = buttons.controls(chat_id)
                 
-                # ✅ EDIT MESSAGE IF EXISTS, THEN DELETE
                 if message:
                     try:
                         await message.edit_media(
@@ -105,13 +105,6 @@ class TgCall(PyTgCalls):
                     except MessageIdInvalid:
                         pass
                     
-                    # ✅ DELETE MESSAGE AFTER 2 SECONDS
-                    try:
-                        await asyncio.sleep(2)
-                        await app.delete_messages(chat_id=chat_id, message_ids=message.id)
-                    except:
-                        pass
-                        
         except FileNotFoundError:
             if message:
                 await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
@@ -150,12 +143,24 @@ class TgCall(PyTgCalls):
         if not media:
             return await self.stop(chat_id)
         
+        # ✅ DELETE PREVIOUS PLAYING MESSAGE
+        try:
+            if media.message_id:
+                await app.delete_messages(
+                    chat_id=chat_id,
+                    message_ids=media.message_id,
+                    revoke=True,
+                )
+                media.message_id = 0
+        except:
+            pass
+
         if not media.file_path:
             media.file_path = await yt.download(media.id, video=media.video)
             if not media.file_path:
                 return
 
-        # ✅ PLAY WITHOUT MESSAGE
+        # ✅ PLAY NEXT WITHOUT MESSAGE
         await self.play_media(chat_id, None, media)
 
 
