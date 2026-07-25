@@ -130,44 +130,37 @@ class TgCall(PyTgCalls):
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
         await self.play_media(chat_id, msg, media)
 
+async def play_next(self, chat_id: int) -> None:
+    media = queue.get_next(chat_id)
+    
+    if not media:
+        return await self.stop(chat_id)
+    
+    try:
+        if media.message_id:
+            await app.delete_messages(
+                chat_id=chat_id,
+                message_ids=media.message_id,
+                revoke=True,
+            )
+    except:
+        pass
 
-    async def play_next(self, chat_id: int) -> None:
-        media = queue.get_next(chat_id)
-        
-        # ✅ IMPORTANT: Check queue first
-        if not media:
-            logger.warning(f"[PLAYBACK] Queue empty for chat {chat_id}")
-            return await self.stop(chat_id)
-        
-        # Try to delete old message
-        try:
-            if media.message_id:
-                await app.delete_messages(
-                    chat_id=chat_id,
-                    message_ids=media.message_id,
-                    revoke=True,
-                )
-                media.message_id = 0
-        except:
-            pass
-
-        _lang = await lang.get_lang(chat_id)
-        msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
-        
-        # Download if needed
+    _lang = await lang.get_lang(chat_id)
+    msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
+    
+    if not media.file_path:
+        media.file_path = await yt.download(media.id, video=media.video)
         if not media.file_path:
-            media.file_path = await yt.download(media.id, video=media.video)
-            if not media.file_path:
-                await self.stop(chat_id)
-                return await msg.edit_text(
-                    _lang["error_no_file"].format(config.SUPPORT_CHAT)
-                )
+            await msg.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
+            return
 
-        media.message_id = msg.id
-        
-        # ✅ TRY TO PLAY - don't stop if error
-        try:
-            await self.play_media(chat_id, msg, media)
+    media.message_id = msg.id
+    await self.play_media(chat_id, msg, media)
+
+
+
+
         except Exception as e:
             logger.error(f"[PLAYBACK ERROR] Chat {chat_id}: {str(e)}")
             await msg.edit_text(f"❌ Error: {str(e)[:100]}")
