@@ -58,7 +58,8 @@ class TgCall(PyTgCalls):
         )
 
         if not media.file_path:
-            await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
+            if message:
+                await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
             return await self.play_next(chat_id)
 
         stream = types.MediaStream(
@@ -89,36 +90,48 @@ class TgCall(PyTgCalls):
                     media.user,
                 )
                 keyboard = buttons.controls(chat_id)
-                try:
-                    await message.edit_media(
-                        media=InputMediaPhoto(
-                            media=_thumb,
-                            caption=text,
-                        ),
-                        reply_markup=keyboard,
-                    )
-                except MessageIdInvalid:
-                    media.message_id = (await app.send_photo(
-                        chat_id=chat_id,
-                        photo=_thumb,
-                        caption=text,
-                        reply_markup=keyboard,
-                    )).id
+                
+                # ✅ EDIT MESSAGE IF EXISTS, THEN DELETE
+                if message:
+                    try:
+                        await message.edit_media(
+                            media=InputMediaPhoto(
+                                media=_thumb,
+                                caption=text,
+                            ),
+                            reply_markup=keyboard,
+                        )
+                        media.message_id = message.id
+                    except MessageIdInvalid:
+                        pass
+                    
+                    # ✅ DELETE MESSAGE AFTER 2 SECONDS
+                    try:
+                        await asyncio.sleep(2)
+                        await app.delete_messages(chat_id=chat_id, message_ids=message.id)
+                    except:
+                        pass
+                        
         except FileNotFoundError:
-            await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
+            if message:
+                await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
             await self.play_next(chat_id)
         except exceptions.NoActiveGroupCall:
             await self.stop(chat_id)
-            await message.edit_text(_lang["error_no_call"])
+            if message:
+                await message.edit_text(_lang["error_no_call"])
         except exceptions.NoAudioSourceFound:
-            await message.edit_text(_lang["error_no_audio"])
+            if message:
+                await message.edit_text(_lang["error_no_audio"])
             await self.play_next(chat_id)
         except (ConnectionNotFound, TelegramServerError):
             await self.stop(chat_id)
-            await message.edit_text(_lang["error_tg_server"])
+            if message:
+                await message.edit_text(_lang["error_tg_server"])
         except RTMPStreamingUnsupported:
             await self.stop(chat_id)
-            await message.edit_text(_lang["error_rtmp"])
+            if message:
+                await message.edit_text(_lang["error_rtmp"])
 
 
     async def replay(self, chat_id: int) -> None:
@@ -137,27 +150,13 @@ class TgCall(PyTgCalls):
         if not media:
             return await self.stop(chat_id)
         
-        try:
-            if media.message_id:
-                await app.delete_messages(
-                    chat_id=chat_id,
-                    message_ids=media.message_id,
-                    revoke=True,
-                )
-        except:
-            pass
-
-        _lang = await lang.get_lang(chat_id)
-        msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
-        
         if not media.file_path:
             media.file_path = await yt.download(media.id, video=media.video)
             if not media.file_path:
-                await msg.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
                 return
 
-        media.message_id = msg.id
-        await self.play_media(chat_id, msg, media)
+        # ✅ PLAY WITHOUT MESSAGE
+        await self.play_media(chat_id, None, media)
 
 
     async def ping(self) -> float:
