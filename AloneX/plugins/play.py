@@ -121,7 +121,15 @@ async def play_hndlr(
             await sent.edit_text(m.lang["play_downloading"])
             file.file_path = await yt.download(file.id, video=video)
 
-    await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
+
+await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
+    
+    # ✅ DELETE USER'S COMMAND MESSAGE
+    try:
+        await m.delete()
+    except:
+        pass
+    
     if not tracks:
         return
     added = playlist_to_queue(m.chat.id, tracks)
